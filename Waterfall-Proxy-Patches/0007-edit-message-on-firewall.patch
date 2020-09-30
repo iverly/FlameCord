@@ -1,0 +1,22 @@
+From d5506f5fdf204fd2410f8ee69e729902184b242a Mon Sep 17 00:00:00 2001
+From: iverly <iverly.dev@gmail.com>
+Date: Wed, 30 Sep 2020 19:25:22 +0200
+Subject: [PATCH] edit: message on firewall
+
+
+diff --git a/flamecord/src/main/java/dev/_2lstudios/flamecord/firewall/FirewallException.java b/flamecord/src/main/java/dev/_2lstudios/flamecord/firewall/FirewallException.java
+index aca06844..3519c0c6 100644
+--- a/flamecord/src/main/java/dev/_2lstudios/flamecord/firewall/FirewallException.java
++++ b/flamecord/src/main/java/dev/_2lstudios/flamecord/firewall/FirewallException.java
+@@ -6,7 +6,7 @@ public class FirewallException extends Exception {
+     private static final long serialVersionUID = 1L;
+ 
+     public FirewallException(final SocketAddress address) {
+-        super("The address " + address + " is blocked from the server!");
++        super("The address ip: " + address + " is blocked from the server!");
+     }
+ 
+     public FirewallException(final String string) {
+-- 
+2.24.3 (Apple Git-128)
+
