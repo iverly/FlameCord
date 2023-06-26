@@ -1,0 +1,131 @@
+From c564761a0215ace19637a81e0cf21070f488c8dc Mon Sep 17 00:00:00 2001
+From: foss-mc <69294560+foss-mc@users.noreply.github.com>
+Date: Wed, 16 Dec 2020 18:06:17 +0800
+Subject: [PATCH] Close connections & Don't flush if not necessary
+
+
+diff --git a/proxy/src/main/java/net/md_5/bungee/connection/InitialHandler.java b/proxy/src/main/java/net/md_5/bungee/connection/InitialHandler.java
+index 3d6bdf5c..ac20d5ad 100644
+--- a/proxy/src/main/java/net/md_5/bungee/connection/InitialHandler.java
++++ b/proxy/src/main/java/net/md_5/bungee/connection/InitialHandler.java
+@@ -218,6 +218,13 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+                         }
+ 
+                         ServerPing legacy = result.getResponse();
++
++                // FlameCord - Close and return if legacy == null
++                if (legacy == null) {
++                    ch.close();
++                    return;
++                }
++
+                         String kickMessage;
+ 
+                         if ( v1_5 )
+@@ -293,6 +300,17 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+                     @Override
+                     public void done(ProxyPingEvent pingResult, Throwable error)
+                     {
++                        // FlameCord - Close if response is null
++                        if (pingResult.getResponse() == null) {
++                            ch.close();
++                            return;
++                        }
++                        
++                        // FlameCord - Return if connection is closed
++                        if (ch.isClosed()) {
++                            return;
++                        }
++
+                         // FlameCord start - 1.7.x support
+                         Gson gson = handshake.getProtocolVersion() == ProtocolConstants.MINECRAFT_1_7_2 ? BungeeCord.getInstance().gsonLegacy : BungeeCord.getInstance().gson;
+                         if ( ProtocolConstants.isBeforeOrEq( handshake.getProtocolVersion() , ProtocolConstants.MINECRAFT_1_8 ) )
+@@ -337,11 +355,13 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+     @Override
+     public void handle(PingPacket ping) throws Exception
+     {
+-        if (!ACCEPT_INVALID_PACKETS) {
+-            Preconditions.checkState(thisState == State.PING, "Not expecting PING");
+-        }
++        // FlameCord - Never accept invalid packets
++        Preconditions.checkState( thisState == State.PING, "Not expecting PING" );
++
+         unsafe.sendPacket( ping );
+-        disconnect( "" );
++
++        // FlameCord - Close instead of disconnect
++        ch.close();
+     }
+ 
+     @Override
+diff --git a/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java b/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java
+index 6dc5633f..8b0fac0a 100644
+--- a/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java
++++ b/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java
+@@ -80,10 +80,11 @@ public class ChannelWrapper
+ 
+             if ( packet != null && ch.isActive() )
+             {
+-                ch.writeAndFlush( packet ).addListeners( ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE, ChannelFutureListener.CLOSE );
++                // FlameCord - Remove the firing of exceptions on failure
++                ch.writeAndFlush( packet ).addListeners( ChannelFutureListener.CLOSE );
+             } else
+             {
+-                ch.flush();
++                // FlameCord - Don't flush just close
+                 ch.close();
+             }
+         }
+@@ -113,7 +114,7 @@ public class ChannelWrapper
+     public void addBefore(String baseName, String name, ChannelHandler handler)
+     {
+         Preconditions.checkState( ch.eventLoop().inEventLoop(), "cannot add handler outside of event loop" );
+-        ch.pipeline().flush();
++        // FlameCord - Don't flush if not necessary
+         ch.pipeline().addBefore( baseName, name, handler );
+     }
+ 
+diff --git a/proxy/src/main/java/net/md_5/bungee/netty/PipelineUtils.java b/proxy/src/main/java/net/md_5/bungee/netty/PipelineUtils.java
+index 6a045d16..9227db06 100644
+--- a/proxy/src/main/java/net/md_5/bungee/netty/PipelineUtils.java
++++ b/proxy/src/main/java/net/md_5/bungee/netty/PipelineUtils.java
+@@ -6,6 +6,7 @@ import io.netty.buffer.PooledByteBufAllocator;
+ import io.netty.channel.Channel;
+ import io.netty.channel.ChannelException;
+ import io.netty.channel.ChannelFactory;
++import io.netty.channel.ChannelHandlerContext;
+ import io.netty.channel.ChannelInitializer;
+ import io.netty.channel.ChannelOption;
+ import io.netty.channel.EventLoopGroup;
+@@ -102,6 +103,14 @@ public class PipelineUtils
+ 
+             BungeeCord.getInstance().getPluginManager().callEvent(connectionInitEvent);
+         }
++
++        // FlameCord - Close on exception caught
++        @Override
++        public void exceptionCaught(final ChannelHandlerContext ctx, final Throwable cause) throws Exception {
++            cause.printStackTrace();
++
++            ctx.close();
++        }
+     };
+     public static final Base BASE = new Base( false );
+     public static final Base BASE_SERVERSIDE = new Base( true );
+@@ -244,5 +253,13 @@ public class PipelineUtils
+ 
+             ch.pipeline().addLast( BOSS_HANDLER, new HandlerBoss() );
+         }
++
++        // FlameCord - Close on exception caught
++        @Override
++        public void exceptionCaught(final ChannelHandlerContext ctx, final Throwable cause) throws Exception {
++            cause.printStackTrace();
++
++            ctx.close();
++        }
+     }
+ }
+-- 
+2.40.1.windows.1
+

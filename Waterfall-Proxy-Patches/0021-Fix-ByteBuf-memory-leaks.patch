@@ -1,0 +1,68 @@
+From 02e31c9782d9d3d3247e14bc14cb734fbbb21911 Mon Sep 17 00:00:00 2001
+From: linsaftw <linsaftw@users.noreply.github.com>
+Date: Sat, 20 Mar 2021 12:36:25 -0300
+Subject: [PATCH] Fix ByteBuf memory leaks
+
+
+diff --git a/proxy/src/main/java/net/md_5/bungee/entitymap/EntityMap.java b/proxy/src/main/java/net/md_5/bungee/entitymap/EntityMap.java
+index 2fc16c5d..b8b9245b 100644
+--- a/proxy/src/main/java/net/md_5/bungee/entitymap/EntityMap.java
++++ b/proxy/src/main/java/net/md_5/bungee/entitymap/EntityMap.java
+@@ -158,11 +158,15 @@ public abstract class EntityMap
+         if ( readId == oldId || readId == newId )
+         {
+             ByteBuf data = packet.copy();
+-            packet.readerIndex( offset );
+-            packet.writerIndex( offset );
+-            DefinedPacket.writeVarInt( readId == oldId ? newId : oldId, packet );
+-            packet.writeBytes( data );
+-            data.release();
++            
++            try {
++                packet.readerIndex( offset );
++                packet.writerIndex( offset );
++                DefinedPacket.writeVarInt( readId == oldId ? newId : oldId, packet );
++                packet.writeBytes( data );
++            } finally {
++                data.release();
++            }
+         }
+     }
+ 
+diff --git a/proxy/src/main/java/net/md_5/bungee/forge/ForgeUtils.java b/proxy/src/main/java/net/md_5/bungee/forge/ForgeUtils.java
+index cefa0206..8d4439ab 100644
+--- a/proxy/src/main/java/net/md_5/bungee/forge/ForgeUtils.java
++++ b/proxy/src/main/java/net/md_5/bungee/forge/ForgeUtils.java
+@@ -38,16 +38,22 @@ public class ForgeUtils
+     {
+         Map<String, String> modTags = new HashMap<>();
+         ByteBuf payload = Unpooled.wrappedBuffer( pluginMessage.getData() );
+-        byte discriminator = payload.readByte();
+-        if ( discriminator == 2 ) // ModList
+-        {
+-            ByteBuf buffer = payload.slice();
+-            int modCount = DefinedPacket.readVarInt( buffer, 2 );
+-            for ( int i = 0; i < modCount; i++ )
++
++        try {
++            byte discriminator = payload.readByte();
++            if ( discriminator == 2 ) // ModList
+             {
+-                modTags.put( DefinedPacket.readString( buffer ), DefinedPacket.readString( buffer ) );
++                ByteBuf buffer = payload.slice();
++                int modCount = DefinedPacket.readVarInt( buffer, 2 );
++                for ( int i = 0; i < modCount; i++ )
++                {
++                    modTags.put( DefinedPacket.readString( buffer ), DefinedPacket.readString( buffer ) );
++                }
+             }
++        } finally {
++            payload.release();
+         }
++        
+         return modTags;
+     }
+ 
+-- 
+2.40.1.windows.1
+
